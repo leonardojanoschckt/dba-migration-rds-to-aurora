@@ -149,7 +149,8 @@ def main():
     config_name = os.path.splitext(os.path.basename(args.config))[0]
     output_path = args.output or f"output/dms_discovery_{config_name}.json"
 
-    aurora_host = config.get("target_aurora_clusters", [{}])[0].get("endpoint", "")
+    cluster     = config.get("target_aurora_clusters", [{}])[0]
+    aurora_host = (cluster.get("cnames") or [cluster.get("endpoint", "")])[0]
 
     print(f"DMS Discovery")
     print(f"Config  : {args.config}")
