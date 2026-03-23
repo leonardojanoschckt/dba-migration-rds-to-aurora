@@ -1,0 +1,53 @@
+# Migration Config - RDS PostgreSQL to Aurora PostgreSQL (PRD)
+# Generated from AWS PRD account on 2026-03-19
+# Source: RDS describe-db-instances + Route53 CNAME lookup
+
+aws_region: "us-east-1"
+
+# Target Aurora PostgreSQL clusters
+target_aurora_clusters:
+  - endpoint: "ckt-microservices1-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ckt-microservices1-aurora-pgsql-prd"
+    cnames:
+      - "ckt-microservices1-aurora-pgsql-prd.conekta.com"
+
+# Source RDS PostgreSQL instances 
+source_rds_endpoints:
+
+  - endpoint: "backoffice-adjustments-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "backoffice-adjustments-pgsql"
+    engine_version: "16.10"
+    cnames:
+      - "backoffice-adjustments-pgsql.conekta.com"
+
+  - endpoint: "backoffice-pricing-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "backoffice-pricing-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "backoffice-pricing-pgsql.conekta.com"
+
+  - endpoint: "bo-affiliations-catalogs-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-affiliations-catalogs-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-affiliations-catalogs-pgsql.conekta.com"
+
+  - endpoint: "bo-backoffice-identity-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-backoffice-identity-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-backoffice-identity-pgsql.conekta.com"
+      - "ct-ident-valid-bkd-pgsql.conekta.com"
+
+  - endpoint: "bo-batcher-upload-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-batcher-upload-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-batcher-upload-pgsql.conekta.com"
+
+  - endpoint: "bo-chargeback-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-chargeback-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-chargeback-pgsql.conekta.com"
+

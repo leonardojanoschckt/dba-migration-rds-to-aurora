@@ -1,0 +1,36 @@
+# Migration Config - RDS PostgreSQL to Aurora PostgreSQL (PRD)
+# Generated from AWS PRD account on 2026-03-19
+# Source: RDS describe-db-instances + Route53 CNAME lookup
+
+aws_region: "us-east-1"
+
+# Target Aurora PostgreSQL clusters
+target_aurora_clusters:
+  - endpoint: "ckt-microservices1-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ckt-microservices1-aurora-pgsql-prd"
+    cnames:
+      - "ckt-microservices1-aurora-pgsql-prd.conekta.com"
+
+# Source RDS PostgreSQL instances 
+source_rds_endpoints:
+
+  - endpoint: "bo-risk-approvals-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-approvals-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-approvals-engine-pgsql.conekta.com"
+
+  - endpoint: "bo-risk-approvals-notification-worker-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-approvals-notification-worker-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-approvals-notification-worker-pgsql.conekta.com"
+
+  - endpoint: "bo-risk-monitoring-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-monitoring-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-monitoring-engine-pgsql.conekta.com"
+      - "rk-risk-pgsql.conekta.com"
+      - "rk-risk-pgsql-prd.conekta.io"
+

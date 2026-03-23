@@ -1,0 +1,238 @@
+# Migration Config - RDS PostgreSQL to Aurora PostgreSQL (PRD)
+# Generated from AWS PRD account on 2026-03-19
+# Source: RDS describe-db-instances + Route53 CNAME lookup
+
+aws_region: "us-east-1"
+
+# Target Aurora PostgreSQL clusters
+target_aurora_clusters:
+  - endpoint: "ckt-microservices1-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ckt-microservices1-aurora-pgsql-prd"
+    cnames:
+      - "ckt-microservices1-aurora-pgsql-prd.conekta.com"
+
+# Source RDS PostgreSQL instances (30 instances)
+source_rds_endpoints:
+
+  # --- Backoffice ---
+  - endpoint: "backoffice-adjustments-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "backoffice-adjustments-pgsql"
+    engine_version: "16.10"
+    cnames:
+      - "backoffice-adjustments-pgsql.conekta.com"
+
+  - endpoint: "backoffice-pricing-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "backoffice-pricing-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "backoffice-pricing-pgsql.conekta.com"
+
+  # --- BO (Backoffice services) ---
+  - endpoint: "bo-affiliations-catalogs-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-affiliations-catalogs-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-affiliations-catalogs-pgsql.conekta.com"
+
+  - endpoint: "bo-backoffice-identity-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-backoffice-identity-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-backoffice-identity-pgsql.conekta.com"
+      - "ct-ident-valid-bkd-pgsql.conekta.com"  # shared by ct-ident-valid-bkd
+
+  - endpoint: "bo-batcher-upload-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-batcher-upload-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-batcher-upload-pgsql.conekta.com"
+
+  - endpoint: "bo-chargeback-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-chargeback-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-chargeback-pgsql.conekta.com"
+
+  - endpoint: "bo-risk-approvals-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-approvals-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-approvals-engine-pgsql.conekta.com"
+
+  - endpoint: "bo-risk-approvals-notification-worker-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-approvals-notification-worker-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-approvals-notification-worker-pgsql.conekta.com"
+
+  - endpoint: "bo-risk-monitoring-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-monitoring-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-monitoring-engine-pgsql.conekta.com"
+      - "rk-risk-pgsql.conekta.com"             # alias from conekta.com zone
+      - "rk-risk-pgsql-prd.conekta.io"          # alias from conekta.io zone
+
+  # --- Conekta core ---
+  - endpoint: "conekta-auth-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "conekta-auth-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "conekta-auth-pgsql.conekta.com"
+
+  # --- CT (Conekta Tech) ---
+  - endpoint: "ct-audit-tool-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-audit-tool-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-audit-tool-pgsql.conekta.com"
+
+  - endpoint: "ct-cash-notifications-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-cash-notifications-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-cash-notifications-pgsql.conekta.com"
+
+  - endpoint: "ct-checkout-api-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-checkout-api-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-checkout-api-pgsql.conekta.com"
+      - "ct-checkout-service-pgsql.conekta.com"  # second alias for checkout
+
+  - endpoint: "ct-compass-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-compass-pgsql-prd"
+    engine_version: "16.8"
+    cnames:
+      - "ct-compass-pgsql.conekta.com"
+
+  - endpoint: "ct-customer-identity-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-customer-identity-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-customer-identity-pgsql.conekta.com"
+
+  - endpoint: "ct-customer-reporting-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-customer-reporting-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-customer-reporting-pgsql.conekta.com"
+
+  - endpoint: "ct-documents-manager-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-documents-manager-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-documents-manager-pgsql.conekta.com"
+
+  - endpoint: "ct-kyc-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-kyc-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-kyc-engine-pgsql.conekta.com"
+
+  - endpoint: "ct-notifications-api-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-notifications-api-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-notifications-api-pgsql.conekta.com"
+
+  - endpoint: "ct-onboarding-catalog-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-onboarding-catalog-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-onboarding-catalog-pgsql.conekta.com"
+
+  - endpoint: "ct-orchestrator-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-orchestrator-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-orchestrator-pgsql.conekta.com"
+
+  - endpoint: "ct-panel-notifications.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-panel-notifications"
+    engine_version: "16.8"
+    cnames:
+      - "ct-panel-notifications.conekta.com"
+
+  - endpoint: "ct-permissions-manager-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-permissions-manager-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-permissions-manager-pgsql.conekta.com"
+
+  - endpoint: "ct-resources-manager-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-resources-manager-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-resources-manager-pgsql.conekta.com"
+
+  - endpoint: "ct-shopify-plugin-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-shopify-plugin-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-shopify-plugin-pgsql.conekta.com"
+
+  - endpoint: "ct-vtex-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-vtex-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-vtex-pgsql.conekta.com"
+
+  # --- PT (Payments) ---
+  - endpoint: "pt-2fa-service-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-2fa-service-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "pt-2fa-service-pgsql.conekta.com"
+
+  - endpoint: "pt-alternative-payments-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-alternative-payments-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "pt-alternative-payments-pgsql.conekta.com"
+
+  - endpoint: "pt-binlist-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-binlist-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "pt-binlist-pgsql.conekta.com"
+
+  - endpoint: "pt-cashout-service-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-cashout-service-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "pt-cashout-service-pgsql.conekta.com"
+
+  - endpoint: "pt-multiplexer-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-multiplexer-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "pt-multiplexer-pgsql.conekta.com"
+
+# Orphaned CNAMEs in Route53 - pointing to RDS endpoints that no longer exist
+# These should be cleaned up or investigated separately
+orphaned_cnames:
+  - cname: "backoffice-balance-pgsql.conekta.com"
+    target: "backoffice-balance-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "backoffice-dispersions-pgsql.conekta.com"
+    target: "backoffice-dispersions-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "backoffice-invoicing-pgsql.conekta.com"
+    target: "backoffice-invoicing-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "bo-kpis-service-pgsql.conekta.com"
+    target: "bo-kpis-service-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "conekta-queue-pgsql.conekta.com"
+    target: "conekta-queue-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "ct-amazonmiddleware-pgsql.conekta.com"
+    target: "ct-amazonmiddleware-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "ct-amazonpaycode-pgsql.conekta.com"
+    target: "ct-amazonpaycode-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "ct-googleintegration-pgsql.conekta.com"
+    target: "ct-googleintegration-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "ct-integrations-oriflame-pgsql.conekta.com"
+    target: "ct-oriflame-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "pt-api-payments-pgsql.conekta.com"
+    target: "pt-api-payments-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "pt-paymentlink-pgsql.conekta.com"
+    target: "pt-paymentlink-pgsql-prod.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+  - cname: "risk-aggregator-pgsql.conekta.com"
+    target: "risk-aggregator-pgsql.cz2gavbagff7.us-east-1.rds.amazonaws.com"

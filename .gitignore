@@ -1,0 +1,10 @@
+# Secrets
+.env
+
+# Cache and report outputs (contain sensitive resolved secrets)
+output/*.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
