@@ -55,8 +55,8 @@ def peerdb_session(api_url, auth_header):
 
 
 def list_mirrors(session):
-    """Return list of mirror summaries from GET /api/v1/mirrors."""
-    resp = session.get(f"{session.base_url}/api/v1/mirrors", timeout=15)
+    """Return list of mirror summaries from GET /api/v1/mirrors/list."""
+    resp = session.get(f"{session.base_url}/api/v1/mirrors/list", timeout=15)
     resp.raise_for_status()
     data = resp.json()
     # API may return {"mirrors": [...]} or directly a list
