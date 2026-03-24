@@ -110,25 +110,36 @@ def get_task(dms, task_id):
         return None, None
 
 
+def delete_endpoint(dms, ep_id):
+    """Delete endpoint if it exists. Returns True if deleted."""
+    exists, arn = endpoint_exists(dms, ep_id)
+    if not exists:
+        print(f"    endpoint {ep_id} : not found")
+        return False
+    dms.delete_endpoint(EndpointArn=arn)
+    print(f"    endpoint {ep_id} : deleted")
+    return True
+
+
+def delete_task(dms, task_id):
+    """Delete task if it exists. Returns True if deleted."""
+    task_arn, task_status = get_task(dms, task_id)
+    if not task_arn:
+        print(f"    task {task_id} : not found")
+        return False
+    if task_status not in ("stopped", "failed", "ready"):
+        print(f"    task {task_id} : cannot delete — status={task_status} (must be stopped first)")
+        return False
+    dms.delete_replication_task(ReplicationTaskArn=task_arn)
+    print(f"    task {task_id} : deleted")
+    return True
+
+
 def create_aurora_endpoint(dms, ep_id, aurora_host, dbname, user, password, ssl_mode, dry_run):
     exists, arn = endpoint_exists(dms, ep_id)
 
     if exists:
-        if dry_run:
-            print(f"    endpoint {ep_id} : [dry-run] would update host/user/password")
-            return arn
-        dms.modify_endpoint(
-            EndpointArn=arn,
-            SslMode=ssl_mode,
-            PostgreSQLSettings={
-                "ServerName":   aurora_host,
-                "Port":         5432,
-                "DatabaseName": dbname,
-                "Username":     user,
-                "Password":     password,
-            },
-        )
-        print(f"    endpoint {ep_id} : updated host/user/password")
+        print(f"    endpoint {ep_id} : already exists — skipped")
         return arn
 
     if dry_run:
@@ -173,22 +184,7 @@ def create_aurora_task(dms, new_task_id, src_arn, task, dry_run):
     task_arn, task_status = get_task(dms, new_task_id)
 
     if task_arn:
-        # Task exists — update MigrationType, mappings and settings
-        if dry_run:
-            print(f"    task {new_task_id} : [dry-run] would modify to cdc (status={task_status})")
-            return False
-
-        if task_status not in ("stopped", "failed", "ready"):
-            print(f"    task {new_task_id} : cannot modify — status={task_status} (must be stopped first)")
-            return False
-
-        dms.modify_replication_task(
-            ReplicationTaskArn=task_arn,
-            MigrationType="cdc",
-            TableMappings=task["mappings"],
-            ReplicationTaskSettings=strip_create_settings(task["settings"]),
-        )
-        print(f"    task {new_task_id} : modified to cdc only (status={task_status})")
+        print(f"    task {new_task_id} : already exists (status={task_status}) — skipped")
         return False
 
     if dry_run:
@@ -220,6 +216,7 @@ def main():
     parser.add_argument("--pgpass",    default="~/.pgpass",    help="Fallback: read password from ~/.pgpass")
     parser.add_argument("--ssl-mode",  default="require",      help="SSL mode for new endpoints (default: require)")
     parser.add_argument("--dry-run",   action="store_true")
+    parser.add_argument("--delete",    action="store_true",    help="Delete Aurora endpoints and tasks instead of creating them")
     args = parser.parse_args()
 
     config_name = os.path.splitext(os.path.basename(args.config))[0]
@@ -243,14 +240,14 @@ def main():
         print(f"  Use --password or add an entry to ~/.pgpass", file=sys.stderr)
         sys.exit(1)
 
-    print("DMS — Create Aurora SOURCE endpoints + duplicate tasks")
+    mode = "DELETE" if args.delete else ("DRY-RUN" if args.dry_run else "CREATE")
+    print("DMS — Aurora SOURCE endpoints + tasks")
     print(f"Config      : {args.config}")
     print(f"Discovery   : {discovery_path}")
     print(f"Aurora host : {aurora_host}")
     print(f"User        : {args.user}")
     print(f"SSL mode    : {args.ssl_mode}")
-    if args.dry_run:
-        print("MODE        : dry-run")
+    print(f"MODE        : {mode}")
     print("=" * 70)
 
     dms = get_dms_client(args.profile)
@@ -281,7 +278,22 @@ def main():
         print(f"  DB      : {dbname}")
         print(f"  Tasks   : {[t['id'] for t in tasks]}")
 
-        # Create Aurora SOURCE endpoint (one per database)
+        # ── DELETE mode ──────────────────────────────────────────────────────
+        if args.delete:
+            for task in tasks:
+                new_task_id = aurora_task_id(task["id"])
+                try:
+                    delete_task(dms, new_task_id)
+                except Exception as e:
+                    print(f"    task {new_task_id} : ERROR deleting — {e}", file=sys.stderr)
+                    tasks_failed += 1
+            try:
+                delete_endpoint(dms, ep_id)
+            except Exception as e:
+                print(f"  ERROR deleting endpoint {ep_id}: {e}", file=sys.stderr)
+            continue
+
+        # ── CREATE mode ───────────────────────────────────────────────────────
         try:
             src_arn = create_aurora_endpoint(
                 dms, ep_id, aurora_host, dbname,
@@ -293,7 +305,6 @@ def main():
             tasks_failed += len(tasks)
             continue
 
-        # Duplicate each task
         for task in tasks:
             new_task_id = aurora_task_id(task["id"])
             try:
@@ -307,10 +318,13 @@ def main():
                 tasks_failed += 1
 
     print(f"\n{'=' * 70}")
-    print(f"  Endpoints created/found : {endpoints_ok}")
-    print(f"  Tasks created           : {tasks_created}")
-    print(f"  Tasks skipped           : {tasks_skipped} (already existed)")
-    print(f"  Tasks failed            : {tasks_failed}")
+    if args.delete:
+        print(f"  Delete errors : {tasks_failed}")
+    else:
+        print(f"  Endpoints created/found : {endpoints_ok}")
+        print(f"  Tasks created           : {tasks_created}")
+        print(f"  Tasks skipped           : {tasks_skipped} (already existed)")
+        print(f"  Tasks failed            : {tasks_failed}")
 
     if tasks_failed > 0:
         sys.exit(1)
