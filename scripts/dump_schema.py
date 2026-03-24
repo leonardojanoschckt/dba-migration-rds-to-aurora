@@ -267,6 +267,8 @@ def compare_objects(src_objs, tgt_objs, dbname):
                 for c in tgt_objs["columns"] if c["table"] not in SKIP_COL_TABLES}
     for item in sorted(src_cols - tgt_cols):
         issues.append({"type": "MISSING_IN_TARGET", "object": "column", "detail": item, "db": dbname})
+    for item in sorted(tgt_cols - src_cols):
+        issues.append({"type": "EXTRA_IN_TARGET", "object": "column", "detail": item, "db": dbname})
 
     return issues
 
