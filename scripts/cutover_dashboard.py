@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Cutover Dashboard — single-microservice migration monitor.
 
-Displays 5 live panels for one RDS microservice during Aurora cutover:
+Displays 6 live panels for one RDS microservice during Aurora cutover:
 
   [1] DNS     — CNAME record name / type / current value / points-to
   [2] PeerDB  — Mirror status / sync interval / rows synced / slot lag
   [3] Conns   — SOURCE vs TARGET pg_stat_activity by state
   [4] Seqs    — SOURCE vs TARGET sequence last_value + delta
   [5] Datadog — APM error rate (requires DD_API_KEY + DD_APP_KEY env vars)
+  [6] ECS     — ECS service status: desired / running / pending tasks + deployment
 
 Usage:
     # Run once
@@ -27,6 +28,7 @@ Environment:
     DD_API_KEY           Datadog API key  (optional)
     DD_APP_KEY           Datadog APP key  (optional)
     DD_SITE              Datadog site     (default: datadoghq.com)
+    AWS_PROFILE          AWS profile for ECS describe_services (default: env default)
 """
 
 import argparse
@@ -39,6 +41,8 @@ import time
 from datetime import datetime, timezone
 
 import psycopg2
+import boto3
+import botocore.exceptions
 import requests
 import yaml
 
@@ -69,6 +73,7 @@ DEFAULT_USER        = "svc_claude"
 DEFAULT_PORT        = 5432
 PEERS_REPORT        = "output/peerdb_peers.json"
 MIRRORS_REPORT      = "output/peerdb_mirrors.json"
+DISCOVERY_REPORT    = "output/discovery_report.json"
 SYSTEM_DBS          = {"postgres", "template0", "template1", "rdsadmin"}
 
 # ANSI
@@ -392,6 +397,68 @@ def get_dd_apm_errors(service_name, dd_api_key, dd_app_key, dd_site="datadoghq.c
 
 
 # ---------------------------------------------------------------------------
+# ECS helpers
+# ---------------------------------------------------------------------------
+
+def load_ecs_services_for(service_name, discovery_report_path=DISCOVERY_REPORT):
+    """Return list of {cluster, service, service_arn} for a given RDS service name."""
+    try:
+        with open(discovery_report_path) as f:
+            report = json.load(f)
+    except FileNotFoundError:
+        return []
+
+    endpoint_data = report.get("endpoints", {}).get(service_name, {})
+    matches = endpoint_data.get("matches", [])
+
+    # Deduplicate by service_arn
+    seen = set()
+    services = []
+    for m in matches:
+        arn = m.get("service_arn", "")
+        if arn and arn not in seen:
+            seen.add(arn)
+            services.append({
+                "cluster":     m.get("cluster", ""),
+                "service":     m.get("service", ""),
+                "service_arn": arn,
+            })
+    return services
+
+
+def get_ecs_service_status(cluster, service_arn, region="us-east-1", profile=None):
+    """Query ECS describe_services and return a status dict."""
+    try:
+        session = boto3.Session(profile_name=profile, region_name=region)
+        client  = session.client("ecs")
+        resp    = client.describe_services(cluster=cluster, services=[service_arn])
+        svcs    = resp.get("services", [])
+        if not svcs:
+            return {"error": "not found"}
+        svc = svcs[0]
+
+        # Active deployment
+        deployments  = svc.get("deployments", [])
+        primary      = next((d for d in deployments if d["status"] == "PRIMARY"), None)
+        deploy_status = primary.get("rolloutState", primary.get("status", "?")) if primary else "?"
+
+        return {
+            "status":          svc.get("status", "?"),
+            "desired":         svc.get("desiredCount", 0),
+            "running":         svc.get("runningCount", 0),
+            "pending":         svc.get("pendingCount", 0),
+            "task_definition": svc.get("taskDefinition", "").split("/")[-1],
+            "deploy_status":   deploy_status,
+        }
+    except botocore.exceptions.NoCredentialsError:
+        return {"error": "no AWS credentials"}
+    except botocore.exceptions.ClientError as e:
+        return {"error": str(e)[:50]}
+    except Exception as e:
+        return {"error": str(e)[:50]}
+
+
+# ---------------------------------------------------------------------------
 # Render sections
 # ---------------------------------------------------------------------------
 
@@ -602,6 +669,67 @@ def render_sequences(source_host, target_host, databases, user, port, use_color)
     return lines
 
 
+def render_ecs(service_name, ecs_services, region, aws_profile, use_color):
+    lines = []
+    CW = {"cluster": 30, "service": 38, "status": 8, "deploy": 14, "desired": 7, "running": 7, "pending": 7}
+    sep = "+" + "+".join("-" * (w + 2) for w in CW.values()) + "+"
+
+    def row(cluster, service, status, deploy, desired, running, pending,
+            status_color="", deploy_color=""):
+        sc = status_color if use_color else ""
+        dc = deploy_color if use_color else ""
+        return (
+            f"| {rpad(cluster, CW['cluster'])} "
+            f"| {rpad(service, CW['service'])} "
+            f"| {rpad(sc + status + (C_RESET if sc else ''), CW['status'])} "
+            f"| {rpad(dc + deploy + (C_RESET if dc else ''), CW['deploy'])} "
+            f"| {lpad(desired, CW['desired'])} "
+            f"| {lpad(running, CW['running'])} "
+            f"| {lpad(pending, CW['pending'])} |"
+        )
+
+    lines.append(sep)
+    lines.append(row("CLUSTER", "ECS SERVICE", "STATUS", "DEPLOYMENT",
+                     "DESIRED", "RUNNING", "PENDING"))
+    lines.append(sep)
+
+    if not ecs_services:
+        lines.append(row("(no ECS services found in discovery report)", "", "", "", "", "", ""))
+        lines.append(sep)
+        return lines
+
+    for svc in ecs_services:
+        info = get_ecs_service_status(svc["cluster"], svc["service_arn"], region, aws_profile)
+
+        if "error" in info:
+            lines.append(row(
+                svc["cluster"][:30], svc["service"][:38],
+                "ERR", info["error"][:14], "", "", "",
+                status_color=C_RED,
+            ))
+            continue
+
+        status  = info["status"]
+        desired = str(info["desired"])
+        running = str(info["running"])
+        pending = str(info["pending"])
+        deploy  = info["deploy_status"][:14]
+
+        # Color logic
+        s_color = C_GREEN if status == "ACTIVE" else C_YELLOW
+        healthy = info["running"] == info["desired"] and info["pending"] == 0
+        d_color = C_GREEN if healthy else (C_YELLOW if info["pending"] > 0 else C_RED)
+
+        lines.append(row(
+            svc["cluster"][:30], svc["service"][:38],
+            status, deploy, desired, running, pending,
+            status_color=s_color, deploy_color=d_color,
+        ))
+
+    lines.append(sep)
+    return lines
+
+
 def render_datadog(service_name, use_color):
     lines = []
     dd_api_key = os.environ.get("DD_API_KEY", "")
@@ -632,6 +760,7 @@ def render_datadog(service_name, use_color):
 
 def render(service_name, source, cnames, source_host, target_host,
            aurora_endpoint, mirrors, session, databases,
+           ecs_services, region, aws_profile,
            user, port, use_color):
 
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -674,6 +803,12 @@ def render(service_name, source, cnames, source_host, target_host,
     print(section_header(5, "DATADOG APM", use_color))
     for line in render_datadog(service_name, use_color):
         print(line)
+    print()
+
+    # [6] ECS
+    print(section_header(6, "ECS SERVICES", use_color))
+    for line in render_ecs(service_name, ecs_services, region, aws_profile, use_color):
+        print(line)
 
 
 # ---------------------------------------------------------------------------
@@ -699,8 +834,13 @@ def main():
     parser.add_argument("--auth-header",
                         default=os.environ.get("PEERDB_AUTH_HEADER", ""),
                         help="PeerDB auth header (or set PEERDB_AUTH_HEADER)")
-    parser.add_argument("--peers-report",   default=PEERS_REPORT)
-    parser.add_argument("--mirrors-report", default=MIRRORS_REPORT)
+    parser.add_argument("--peers-report",      default=PEERS_REPORT)
+    parser.add_argument("--mirrors-report",    default=MIRRORS_REPORT)
+    parser.add_argument("--discovery-report",  default=DISCOVERY_REPORT)
+    parser.add_argument("--region",            default="us-east-1",
+                        help="AWS region for ECS queries (default: us-east-1)")
+    parser.add_argument("--aws-profile",       default=None,
+                        help="AWS profile for ECS queries (default: env default)")
     args = parser.parse_args()
 
     # Load config
@@ -719,6 +859,12 @@ def main():
     aurora_clusters = config.get("target_aurora_clusters", [])
     aurora_endpoint = aurora_clusters[0]["endpoint"] if aurora_clusters else ""
     target_host     = aurora_endpoint
+
+    # ECS services for this RDS
+    ecs_services = load_ecs_services_for(args.service, args.discovery_report)
+    if not ecs_services:
+        print(f"WARNING: no ECS services found in {args.discovery_report} for '{args.service}'",
+              file=sys.stderr)
 
     # Mirrors for this service
     mirrors = load_mirrors_for_service(args.service)
@@ -750,6 +896,7 @@ def main():
                 render(
                     args.service, source, cnames, source_host, target_host,
                     aurora_endpoint, mirrors, session, databases,
+                    ecs_services, args.region, args.aws_profile,
                     args.user, args.port, use_color,
                 )
                 print(f"\n  Refreshing every {args.watch}s — Ctrl+C to stop")
