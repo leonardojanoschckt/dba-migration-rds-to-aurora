@@ -176,25 +176,31 @@ def list_databases(host, port, user):
         return []
 
 
-def get_connections_by_state(host, port, user):
-    """Returns dict: {state -> count} across all non-system databases."""
+def get_connections_by_db(host, port, user):
+    """Returns dict: {datname -> {state -> count}} for non-system databases."""
     try:
         conn = pg_connect(host, port, "postgres", user)
         conn.set_session(readonly=True, autocommit=True)
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT COALESCE(state, 'unknown') AS state, count(*)::int
+                SELECT
+                    datname,
+                    COALESCE(state, 'unknown') AS state,
+                    count(*)::int
                 FROM pg_stat_activity
                 WHERE datname NOT IN %s
                   AND pid <> pg_backend_pid()
-                GROUP BY state
-                ORDER BY count(*) DESC
+                GROUP BY datname, state
+                ORDER BY datname, count(*) DESC
             """, (tuple(SYSTEM_DBS),))
             rows = cur.fetchall()
         conn.close()
-        return {row[0]: row[1] for row in rows}
+        result = {}
+        for datname, state, count in rows:
+            result.setdefault(datname, {})[state] = count
+        return result
     except Exception as e:
-        return {"error": str(e)[:40]}
+        return {"__error__": str(e)[:60]}
 
 
 def get_sequences(host, port, user, dbname):
@@ -546,66 +552,89 @@ def render_peerdb(session, mirrors, source_host, user, port, use_color):
 def render_connections(source_host, target_host, user, port, use_color):
     lines = []
 
-    src_conns = get_connections_by_state(source_host, port, user) if source_host else {}
-    tgt_conns = get_connections_by_state(target_host, port, user) if target_host else {}
+    src_data = get_connections_by_db(source_host, port, user) if source_host else {}
+    tgt_data = get_connections_by_db(target_host, port, user) if target_host else {}
 
-    all_states = sorted(set(list(src_conns.keys()) + list(tgt_conns.keys())))
-    if "error" in all_states:
-        all_states.remove("error")
-        all_states.append("error")
-
-    STATE_LABEL = {
-        "active":               "active",
-        "idle":                 "idle",
-        "idle in transaction":  "idle in txn",
-        "idle in transaction (aborted)": "idle in txn (abort)",
-        "fastpath function call": "fastpath",
-        "disabled":             "disabled",
-        "unknown":              "unknown",
-        "error":                "error",
+    STATE_SHORT = {
+        "active":                          "active",
+        "idle":                            "idle",
+        "idle in transaction":             "idle in txn",
+        "idle in transaction (aborted)":   "idle in txn (abrt)",
+        "fastpath function call":          "fastpath",
+        "disabled":                        "disabled",
+        "unknown":                         "unknown",
     }
 
-    COL = 34
-    sep = "+" + "-" * (COL + 2) + "+" + "-" * (COL + 2) + "+"
-    mid = "+" + "-" * (COL + 2) + "+" + "-" * (COL + 2) + "+"
+    CW = {"db": 28, "state": 20, "src": 8, "tgt": 8}
+    sep = "+" + "+".join("-" * (w + 2) for w in CW.values()) + "+"
+    mid = sep
 
-    def row(left, right):
-        return f"| {rpad(left, COL)} | {rpad(right, COL)} |"
+    def row(db, state, src, tgt, state_color=""):
+        sc = state_color if use_color else ""
+        return (
+            f"| {rpad(db,    CW['db'])} "
+            f"| {rpad(sc + state + (C_RESET if sc else ''), CW['state'])} "
+            f"| {lpad(src,   CW['src'])} "
+            f"| {lpad(tgt,   CW['tgt'])} |"
+        )
 
     lines.append(sep)
-    src_label = f"SOURCE  ({source_host[:30] if source_host else 'N/A'})"
-    tgt_label = f"TARGET  ({target_host[:30] if target_host else 'N/A'})"
-    lines.append(row(src_label, tgt_label))
-    lines.append(mid)
+    lines.append(row("DATABASE", "STATE", "SOURCE", "TARGET"))
+    lines.append(sep)
 
-    if not all_states:
-        lines.append(row("(no connections)", "(no connections)"))
+    # Connection error
+    if "__error__" in src_data or "__error__" in tgt_data:
+        err = src_data.get("__error__") or tgt_data.get("__error__", "")
+        lines.append(row("ERROR", err[:20], "", ""))
+        lines.append(sep)
+        return lines
+
+    all_dbs = sorted(set(list(src_data.keys()) + list(tgt_data.keys())))
+
+    if not all_dbs:
+        lines.append(row("(no connections)", "", "0", "0"))
     else:
-        for state in all_states:
-            label  = STATE_LABEL.get(state, state)
-            src_n  = src_conns.get(state, 0)
-            tgt_n  = tgt_conns.get(state, 0)
+        total_src = total_tgt = 0
+        for db in all_dbs:
+            src_states = src_data.get(db, {})
+            tgt_states = tgt_data.get(db, {})
+            all_states = sorted(
+                set(list(src_states.keys()) + list(tgt_states.keys())),
+                key=lambda s: (s != "active", s != "idle", s),
+            )
+            first = True
+            for state in all_states:
+                src_n = src_states.get(state, 0)
+                tgt_n = tgt_states.get(state, 0)
+                total_src += src_n
+                total_tgt += tgt_n
 
-            src_txt = f"{label:<22} {src_n:>6}"
-            tgt_txt = f"{label:<22} {tgt_n:>6}"
+                label = STATE_SHORT.get(state, state[:20])
+                s_color = ""
+                if use_color:
+                    if state == "active":
+                        s_color = C_GREEN
+                    elif "aborted" in state or state == "__error__":
+                        s_color = C_RED
+                    elif "transaction" in state:
+                        s_color = C_YELLOW
 
-            if use_color:
-                if state == "active":
-                    src_txt = colorize(C_GREEN,  src_txt) if src_n else src_txt
-                    tgt_txt = colorize(C_GREEN,  tgt_txt) if tgt_n else tgt_txt
-                elif "abort" in state or state == "error":
-                    src_txt = colorize(C_RED,    src_txt) if src_n else src_txt
-                    tgt_txt = colorize(C_RED,    tgt_txt) if tgt_n else tgt_txt
-                elif "transaction" in state:
-                    src_txt = colorize(C_YELLOW, src_txt) if src_n else src_txt
-                    tgt_txt = colorize(C_YELLOW, tgt_txt) if tgt_n else tgt_txt
+                db_col = db if first else ""
+                lines.append(row(db_col, label, str(src_n), str(tgt_n), s_color))
+                first = False
 
-            lines.append(row(src_txt, tgt_txt))
+            lines.append(mid)
 
-    total_src = sum(v for k, v in src_conns.items() if k != "error")
-    total_tgt = sum(v for k, v in tgt_conns.items() if k != "error")
-    lines.append(mid)
-    lines.append(row(f"{'TOTAL':<22} {total_src:>6}", f"{'TOTAL':<22} {total_tgt:>6}"))
+    # Total footer
+    total_src = sum(
+        n for db_states in src_data.values() if isinstance(db_states, dict)
+        for n in db_states.values()
+    )
+    total_tgt = sum(
+        n for db_states in tgt_data.values() if isinstance(db_states, dict)
+        for n in db_states.values()
+    )
+    lines.append(row("TOTAL", "", str(total_src), str(total_tgt)))
     lines.append(sep)
     return lines
 
