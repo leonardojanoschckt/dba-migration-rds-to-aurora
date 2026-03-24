@@ -186,6 +186,44 @@ def fetch_objects(host, port, user, dbname):
         conn.close()
 
 
+def fetch_materialized_views(host, port, user, dbname):
+    """Return list of (schema, matviewname) for all materialized views in the database."""
+    conn = pg_connect(host, port, dbname, user)
+    conn.set_session(readonly=True, autocommit=True)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT schemaname, matviewname
+                FROM pg_matviews
+                WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+                ORDER BY schemaname, matviewname
+            """)
+            return [(r[0], r[1]) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def refresh_materialized_views(host, port, user, dbname, mviews):
+    """Run REFRESH MATERIALIZED VIEW for each mview. Returns list of (name, ok, error)."""
+    if not mviews:
+        return []
+    conn = pg_connect(host, port, dbname, user)
+    conn.set_session(autocommit=True)
+    results = []
+    try:
+        with conn.cursor() as cur:
+            for schema, name in mviews:
+                fqn = f'"{schema}"."{name}"'
+                try:
+                    cur.execute(f"REFRESH MATERIALIZED VIEW {fqn}")
+                    results.append((fqn, True, None))
+                except Exception as e:
+                    results.append((fqn, False, str(e)))
+    finally:
+        conn.close()
+    return results
+
+
 def normalize_acl(acl_string):
     """Normalize ACL string to ignore minor version differences.
 
@@ -424,6 +462,29 @@ def main():
                     report["databases"].append(db_entry)
                     report["summary"]["failed"] += 1
                     continue
+
+                # Refresh materialized views (schema-only dump leaves them empty)
+                try:
+                    mviews = fetch_materialized_views(src_host, args.port, args.user, dbname)
+                    db_entry["materialized_views"] = [f"{s}.{n}" for s, n in mviews]
+                    if mviews:
+                        print(f"    Materialized views: {len(mviews)} found — refreshing on TARGET")
+                        refresh_results = refresh_materialized_views(
+                            target_host, args.port, args.user, dbname, mviews
+                        )
+                        for fqn, ok, err in refresh_results:
+                            if ok:
+                                print(f"      REFRESH {fqn}: OK")
+                            else:
+                                print(f"      REFRESH {fqn}: FAILED — {err}", file=sys.stderr)
+                        db_entry["mview_refresh"] = [
+                            {"name": fqn, "ok": ok, "error": err}
+                            for fqn, ok, err in refresh_results
+                        ]
+                    else:
+                        print(f"    Materialized views: none")
+                except Exception as e:
+                    print(f"    Materialized views: ERROR — {e}", file=sys.stderr)
 
             # Verify
             try:
