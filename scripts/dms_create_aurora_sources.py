@@ -150,11 +150,16 @@ def create_aurora_endpoint(dms, ep_id, aurora_host, dbname, user, password, ssl_
 
 
 def strip_create_settings(settings_json):
-    """Remove fields DMS rejects on CreateReplicationTask."""
+    """Remove fields DMS rejects on CreateReplicationTask.
+
+    CloudWatchLogGroup and CloudWatchLogStream live inside settings.Logging,
+    not at the top level.
+    """
     try:
         s = json.loads(settings_json)
-        s.pop("CloudWatchLogGroup",  None)
-        s.pop("CloudWatchLogStream", None)
+        logging = s.get("Logging", {})
+        logging.pop("CloudWatchLogGroup",  None)
+        logging.pop("CloudWatchLogStream", None)
         return json.dumps(s)
     except Exception:
         return settings_json
