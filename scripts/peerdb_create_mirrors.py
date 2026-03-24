@@ -13,8 +13,8 @@ Usage:
     # Dry-run
     python scripts/peerdb_create_mirrors.py --config config/migration.yaml --dry-run
 
-    # Initial snapshot (sync all existing data + CDC)
-    python scripts/peerdb_create_mirrors.py --config config/migration.yaml --initial-snapshot
+    # CDC only, skip initial data copy
+    python scripts/peerdb_create_mirrors.py --config config/migration.yaml --no-initial-snapshot
 
     # Limit to specific schemas (default: all non-system schemas)
     python scripts/peerdb_create_mirrors.py --config config/migration.yaml --include-schemas public,v2,v3
@@ -400,8 +400,8 @@ def main():
     parser.add_argument("--exclude-schemas",
                         default="pg_catalog,information_schema,pg_toast",
                         help="Comma-separated schemas to exclude")
-    parser.add_argument("--initial-snapshot", action="store_true",
-                        help="Enable initial snapshot (sync existing data + CDC)")
+    parser.add_argument("--no-initial-snapshot", action="store_true",
+                        help="Skip initial snapshot (CDC only, no data copy)")
     parser.add_argument("--database",
                         help="Only create mirror for this specific database")
     parser.add_argument("--api-url", default=os.environ.get("PEERDB_API_URL", ""))
@@ -445,9 +445,11 @@ def main():
 
     session = peerdb_session(args.api_url, args.auth_header)
 
+    do_snapshot = not args.no_initial_snapshot
+
     print(f"PeerDB CDC Mirrors")
     print(f"API: {args.api_url}")
-    print(f"Initial snapshot: {args.initial_snapshot}")
+    print(f"Initial snapshot: {do_snapshot}")
     if args.dry_run:
         print("MODE: dry-run")
     print("=" * 70)
@@ -523,17 +525,36 @@ def main():
                 report["summary"]["failed"] += 1
                 continue
 
-            # Ensure publication exists on SOURCE
+            # Drop slot and publication on SOURCE if they already exist (stale from a previous mirror)
             try:
                 conn = pg_connect(src_host, args.port, dbname, args.user)
                 conn.set_session(autocommit=True)
                 with conn.cursor() as cur:
+                    # Drop replication slot if present
+                    cur.execute(
+                        "SELECT pg_drop_replication_slot(%s) "
+                        "FROM pg_replication_slots WHERE slot_name = %s",
+                        (slot_name, slot_name),
+                    )
+                    if cur.rowcount:
+                        print(f"    Slot      : {slot_name} dropped (stale)")
+
+                    # Drop publication if present
                     cur.execute("SELECT 1 FROM pg_publication WHERE pubname = %s", (pub_name,))
                     if cur.fetchone():
-                        print(f"    Publication: {pub_name} already exists")
-                    else:
-                        cur.execute(f'CREATE PUBLICATION "{pub_name}" FOR ALL TABLES')
-                        print(f"    Publication: {pub_name} created")
+                        cur.execute(f'DROP PUBLICATION IF EXISTS "{pub_name}"')
+                        print(f"    Publication: {pub_name} dropped (stale)")
+                conn.close()
+            except Exception as e:
+                print(f"    WARN: could not clean up slot/publication: {e}", file=sys.stderr)
+
+            # Create publication on SOURCE
+            try:
+                conn = pg_connect(src_host, args.port, dbname, args.user)
+                conn.set_session(autocommit=True)
+                with conn.cursor() as cur:
+                    cur.execute(f'CREATE PUBLICATION "{pub_name}" FOR ALL TABLES')
+                    print(f"    Publication: {pub_name} created")
                 conn.close()
             except Exception as e:
                 print(f"    ERROR creating publication: {e}", file=sys.stderr)
@@ -574,21 +595,7 @@ def main():
                         report["summary"]["failed"] += 1
                         continue
                     print(f"    Status    : terminated ({term_state})")
-
-                    # Drop replication slot on source (PeerDB leaves it behind)
-                    try:
-                        conn = pg_connect(src_host, args.port, dbname, args.user)
-                        conn.set_session(autocommit=True)
-                        with conn.cursor() as cur:
-                            cur.execute(
-                                "SELECT pg_drop_replication_slot(%s) "
-                                "FROM pg_replication_slots WHERE slot_name = %s",
-                                (slot_name, slot_name),
-                            )
-                        conn.close()
-                        print(f"    Slot      : {slot_name} dropped")
-                    except Exception as e:
-                        print(f"    WARN: could not drop slot {slot_name}: {e}", file=sys.stderr)
+                    # Slot and publication cleanup is handled below (before create_mirror)
 
                     # Restore schema on target to leave it clean before re-syncing
                     if not target_host:
@@ -603,6 +610,7 @@ def main():
                         report["summary"]["failed"] += 1
                         continue
                     print(f"    Schema    : restored — recreating mirror...")
+                    do_snapshot = True  # always snapshot after a drop+restore
                 else:
                     print(f"    Status    : already exists — skipped")
                     report["summary"]["skipped"] += 1
@@ -640,7 +648,7 @@ def main():
             ok, result = create_mirror(
                 session, flow_name, src_peer, tgt_peer,
                 tables, pub_name, slot_name,
-                do_initial_snapshot=args.initial_snapshot,
+                do_initial_snapshot=do_snapshot,
                 dry_run=args.dry_run,
             )
 
