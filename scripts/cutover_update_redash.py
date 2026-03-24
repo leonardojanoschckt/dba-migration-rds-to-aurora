@@ -222,6 +222,9 @@ def main():
     parser.add_argument("--api-key",
                         default=os.environ.get("REDASH_API_KEY", ""),
                         help="Redash API key (or set REDASH_API_KEY)")
+    parser.add_argument("--target-host",
+                        default="ckt-microservices1-aurora-pgsql-prd-reader.conekta.com",
+                        help="Target host for Redash datasources (default: Aurora reader CNAME)")
     args = parser.parse_args()
 
     if not args.redash_url:
@@ -242,7 +245,7 @@ def main():
 
     print(f"Cutover Step 6 — Update Redash Datasources")
     print(f"Redash  : {args.redash_url}")
-    print(f"TARGET  : {aurora_endpoint}")
+    print(f"TARGET  : {args.target_host}")
     print(f"Mode    : {'DRY-RUN' if dry_run else 'APPLY'}")
 
     try:
@@ -264,7 +267,7 @@ def main():
     total_updated = total_skipped = total_errors = 0
 
     for source in sources:
-        upd, skip, err = process_service(session, source, aurora_endpoint, dry_run)
+        upd, skip, err = process_service(session, source, args.target_host, dry_run)
         total_updated += upd
         total_skipped += skip
         total_errors  += err
