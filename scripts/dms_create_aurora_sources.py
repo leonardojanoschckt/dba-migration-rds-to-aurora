@@ -179,11 +179,11 @@ def create_aurora_task(dms, new_task_id, src_arn, task, dry_run):
         SourceEndpointArn=src_arn,
         TargetEndpointArn=task["target_arn"],
         ReplicationInstanceArn=task["instance_arn"],
-        MigrationType=task["type"],
+        MigrationType="cdc",
         TableMappings=task["mappings"],
         ReplicationTaskSettings=strip_create_settings(task["settings"]),
     )
-    print(f"    task {new_task_id} : created (stopped)")
+    print(f"    task {new_task_id} : created (stopped, cdc only)")
     return True
 
 
