@@ -96,14 +96,18 @@ def endpoint_exists(dms, endpoint_id):
         return False, None
 
 
-def task_exists(dms, task_id):
+def get_task(dms, task_id):
+    """Return (arn, status) if task exists, else (None, None)."""
     try:
         r = dms.describe_replication_tasks(
             Filters=[{"Name": "replication-task-id", "Values": [task_id]}]
         )
-        return len(r.get("ReplicationTasks", [])) > 0
+        tasks = r.get("ReplicationTasks", [])
+        if tasks:
+            return tasks[0]["ReplicationTaskArn"], tasks[0]["Status"]
+        return None, None
     except Exception:
-        return False
+        return None, None
 
 
 def create_aurora_endpoint(dms, ep_id, aurora_host, dbname, user, password, ssl_mode, dry_run):
@@ -166,12 +170,29 @@ def strip_create_settings(settings_json):
 
 
 def create_aurora_task(dms, new_task_id, src_arn, task, dry_run):
-    if task_exists(dms, new_task_id):
-        print(f"    task {new_task_id} : already exists — skipped")
+    task_arn, task_status = get_task(dms, new_task_id)
+
+    if task_arn:
+        # Task exists — update MigrationType, mappings and settings
+        if dry_run:
+            print(f"    task {new_task_id} : [dry-run] would modify to cdc (status={task_status})")
+            return False
+
+        if task_status not in ("stopped", "failed", "ready"):
+            print(f"    task {new_task_id} : cannot modify — status={task_status} (must be stopped first)")
+            return False
+
+        dms.modify_replication_task(
+            ReplicationTaskArn=task_arn,
+            MigrationType="cdc",
+            TableMappings=task["mappings"],
+            ReplicationTaskSettings=strip_create_settings(task["settings"]),
+        )
+        print(f"    task {new_task_id} : modified to cdc only (status={task_status})")
         return False
 
     if dry_run:
-        print(f"    task {new_task_id} : [dry-run] would create (stopped)")
+        print(f"    task {new_task_id} : [dry-run] would create (stopped, cdc only)")
         return True
 
     dms.create_replication_task(
