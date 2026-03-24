@@ -134,6 +134,17 @@ def create_aurora_endpoint(dms, ep_id, aurora_host, dbname, user, password, ssl_
     return arn
 
 
+def strip_create_settings(settings_json):
+    """Remove fields DMS rejects on CreateReplicationTask."""
+    try:
+        s = json.loads(settings_json)
+        s.pop("CloudWatchLogGroup",  None)
+        s.pop("CloudWatchLogStream", None)
+        return json.dumps(s)
+    except Exception:
+        return settings_json
+
+
 def create_aurora_task(dms, new_task_id, src_arn, task, dry_run):
     if task_exists(dms, new_task_id):
         print(f"    task {new_task_id} : already exists — skipped")
@@ -150,7 +161,7 @@ def create_aurora_task(dms, new_task_id, src_arn, task, dry_run):
         ReplicationInstanceArn=task["instance_arn"],
         MigrationType=task["type"],
         TableMappings=task["mappings"],
-        ReplicationTaskSettings=task["settings"],
+        ReplicationTaskSettings=strip_create_settings(task["settings"]),
     )
     print(f"    task {new_task_id} : created (stopped)")
     return True
