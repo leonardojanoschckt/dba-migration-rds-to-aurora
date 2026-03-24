@@ -16,6 +16,9 @@ Usage:
     # Initial snapshot (sync all existing data + CDC)
     python scripts/peerdb_create_mirrors.py --config config/migration.yaml --initial-snapshot
 
+    # Limit to specific schemas (default: all non-system schemas)
+    python scripts/peerdb_create_mirrors.py --config config/migration.yaml --include-schemas public,v2,v3
+
 Environment variables:
     PEERDB_API_URL        e.g. http://10.210.13.211:3000
     PEERDB_AUTH_HEADER    e.g. Authorization: Basic OnBlZXJkYg==
@@ -392,10 +395,10 @@ def main():
     parser.add_argument("--user", default=DEFAULT_USER,
                         help="PostgreSQL user for table discovery")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--include-schemas", default="public",
-                        help="Comma-separated schemas to include (default: public)")
+    parser.add_argument("--include-schemas", default="",
+                        help="Comma-separated schemas to include (default: all non-system schemas)")
     parser.add_argument("--exclude-schemas",
-                        default="pg_catalog,information_schema",
+                        default="pg_catalog,information_schema,pg_toast",
                         help="Comma-separated schemas to exclude")
     parser.add_argument("--initial-snapshot", action="store_true",
                         help="Enable initial snapshot (sync existing data + CDC)")
@@ -418,7 +421,7 @@ def main():
         print("ERROR: --auth-header or PEERDB_AUTH_HEADER is required", file=sys.stderr)
         sys.exit(1)
 
-    include_schemas = tuple(s.strip() for s in args.include_schemas.split(",") if s.strip())
+    include_schemas = tuple(s.strip() for s in args.include_schemas.split(",") if s.strip())  # empty = all
     exclude_schemas = tuple(s.strip() for s in args.exclude_schemas.split(",") if s.strip())
 
     config = load_config(args.config)
