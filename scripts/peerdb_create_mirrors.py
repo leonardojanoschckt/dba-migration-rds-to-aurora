@@ -677,7 +677,7 @@ def main():
                 "publication": pub_name,
                 "replication_slot": slot_name,
                 "tables": len(tables),
-                "initial_snapshot": args.initial_snapshot,
+                "initial_snapshot": do_snapshot,
                 "status": status,
             })
 
