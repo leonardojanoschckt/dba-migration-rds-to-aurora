@@ -59,22 +59,24 @@ def list_mirrors(session):
     resp = session.get(f"{session.base_url}/api/v1/mirrors/list", timeout=15)
     resp.raise_for_status()
     data = resp.json()
-    # API may return {"mirrors": [...]} or directly a list
     if isinstance(data, list):
         return data
     return data.get("mirrors", [])
 
 
-def get_mirror_status(session, flow_job_name):
-    """Return full mirror status including config."""
-    resp = session.post(
-        f"{session.base_url}/api/v1/mirrors/status",
-        json={"flowJobName": flow_job_name},
-        timeout=15,
-    )
-    if resp.status_code != 200:
-        return {}
-    return resp.json()
+def get_mirror_state(session, flow_job_name):
+    """Return currentFlowState string."""
+    try:
+        resp = session.post(
+            f"{session.base_url}/api/v1/mirrors/status",
+            json={"flowJobName": flow_job_name},
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return "STATUS_UNKNOWN"
+        return resp.json().get("currentFlowState", "STATUS_UNKNOWN")
+    except Exception:
+        return "STATUS_UNKNOWN"
 
 
 def load_peers_report(path):
@@ -90,22 +92,28 @@ def load_peers_report(path):
         return {}
 
 
-def extract_mirror_record(flow_name, status_resp, peers_lookup):
-    """Build a mirror record in the peerdb_mirrors.json format."""
-    state  = status_resp.get("currentFlowState", "STATUS_UNKNOWN")
-    config = status_resp.get("cdcFlowConfigProto", {}) or {}
+STATE_MAP = {
+    "STATUS_RUNNING":    "running",
+    "STATUS_PAUSED":     "paused",
+    "STATUS_SNAPSHOT":   "snapshot",
+    "STATUS_TERMINATED": "terminated",
+    "STATUS_UNKNOWN":    "unknown",
+}
 
-    source_peer = config.get("sourceName", "")
-    target_peer = config.get("destinationName", "")
-    pub_name    = config.get("publicationName", "")
-    slot_name   = config.get("replicationSlotName", "")
-    table_maps  = config.get("tableMappings", []) or []
 
-    # Derive database from target peer name convention:
-    # aurora-microservices1--{dbname}  →  dbname
-    database = ""
-    if "--" in target_peer:
-        database = target_peer.split("--", 1)[1]
+def extract_mirror_record(m, state, peers_lookup):
+    """Build a mirror record from mirrors/list entry + state."""
+    flow_name   = m.get("name", "")
+    source_peer = m.get("sourceName", "")
+    target_peer = m.get("destinationName", "")
+
+    # Derive database from target peer: aurora-microservices1--{dbname}
+    # Peer names use hyphens; actual DB names use underscores
+    database = target_peer.split("--", 1)[1].replace("-", "_") if "--" in target_peer else ""
+
+    # Slot and publication follow naming convention used by peerdb_create_mirrors.py
+    pub_name  = f"aurora_pub_{database}_001"  if database else ""
+    slot_name = f"aurora_slot_{database}_001" if database else ""
 
     # Derive source_rds from peers report
     source_rds = ""
@@ -113,15 +121,7 @@ def extract_mirror_record(flow_name, status_resp, peers_lookup):
     if peer_info:
         source_rds = peer_info.get("rds_source", "")
 
-    # Normalize state to simple string
-    state_map = {
-        "STATUS_RUNNING":    "running",
-        "STATUS_PAUSED":     "paused",
-        "STATUS_SNAPSHOT":   "snapshot",
-        "STATUS_TERMINATED": "terminated",
-        "STATUS_UNKNOWN":    "unknown",
-    }
-    status_str = state_map.get(state, state.lower().replace("status_", ""))
+    status_str = STATE_MAP.get(state, state.lower().replace("status_", ""))
 
     return {
         "flow_job_name":    flow_name,
@@ -131,7 +131,7 @@ def extract_mirror_record(flow_name, status_resp, peers_lookup):
         "target_peer":      target_peer,
         "publication":      pub_name,
         "replication_slot": slot_name,
-        "tables":           len(table_maps),
+        "tables":           0,
         "initial_snapshot": True,
         "status":           status_str,
     }
@@ -168,25 +168,19 @@ def main():
         print(f"ERROR fetching mirrors: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Found {len(mirrors_list)} mirror(s) — fetching details...")
+    print(f"Found {len(mirrors_list)} mirror(s) — fetching state...")
 
     records = []
     for m in mirrors_list:
-        flow_name = m.get("flowJobName") or m.get("flow_job_name") or m.get("name", "")
+        flow_name = m.get("name", "")
         if not flow_name:
             continue
 
-        try:
-            status_resp = get_mirror_status(session, flow_name)
-        except Exception as e:
-            print(f"  WARN: could not fetch status for {flow_name}: {e}", file=sys.stderr)
-            status_resp = {}
-
-        record = extract_mirror_record(flow_name, status_resp, peers_lookup)
-        state  = record["status"]
+        state  = get_mirror_state(session, flow_name)
+        record = extract_mirror_record(m, state, peers_lookup)
         db     = record["database"] or "(unknown)"
         src    = record["source_rds"] or record["source_peer"]
-        print(f"  {flow_name:<45}  db={db:<30}  src={src}  status={state}")
+        print(f"  {flow_name:<45}  db={db:<30}  src={src:<50}  status={record['status']}")
         records.append(record)
 
     # Sort by flow_job_name for stable output
