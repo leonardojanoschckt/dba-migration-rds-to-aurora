@@ -176,23 +176,39 @@ def list_databases(host, port, user):
         return []
 
 
-def get_connections_by_db(host, port, user):
-    """Returns dict: {datname -> {state -> count}} for non-system databases."""
+def get_connections_by_db(host, port, user, databases=None):
+    """Returns dict: {datname -> {state -> count}}.
+
+    If databases is provided, only those databases are included.
+    """
     try:
         conn = pg_connect(host, port, "postgres", user)
         conn.set_session(readonly=True, autocommit=True)
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT
-                    datname,
-                    COALESCE(state, 'unknown') AS state,
-                    count(*)::int
-                FROM pg_stat_activity
-                WHERE datname NOT IN %s
-                  AND pid <> pg_backend_pid()
-                GROUP BY datname, state
-                ORDER BY datname, count(*) DESC
-            """, (tuple(SYSTEM_DBS),))
+            if databases:
+                cur.execute("""
+                    SELECT
+                        datname,
+                        COALESCE(state, 'unknown') AS state,
+                        count(*)::int
+                    FROM pg_stat_activity
+                    WHERE datname = ANY(%s)
+                      AND pid <> pg_backend_pid()
+                    GROUP BY datname, state
+                    ORDER BY datname, count(*) DESC
+                """, (list(databases),))
+            else:
+                cur.execute("""
+                    SELECT
+                        datname,
+                        COALESCE(state, 'unknown') AS state,
+                        count(*)::int
+                    FROM pg_stat_activity
+                    WHERE datname NOT IN %s
+                      AND pid <> pg_backend_pid()
+                    GROUP BY datname, state
+                    ORDER BY datname, count(*) DESC
+                """, (tuple(SYSTEM_DBS),))
             rows = cur.fetchall()
         conn.close()
         result = {}
@@ -549,11 +565,11 @@ def render_peerdb(session, mirrors, source_host, user, port, use_color):
     return lines
 
 
-def render_connections(source_host, target_host, user, port, use_color):
+def render_connections(source_host, target_host, databases, user, port, use_color):
     lines = []
 
-    src_data = get_connections_by_db(source_host, port, user) if source_host else {}
-    tgt_data = get_connections_by_db(target_host, port, user) if target_host else {}
+    src_data = get_connections_by_db(source_host, port, user, databases) if source_host else {}
+    tgt_data = get_connections_by_db(target_host, port, user, databases) if target_host else {}
 
     STATE_SHORT = {
         "active":                          "active",
@@ -818,7 +834,7 @@ def render(service_name, source, cnames, source_host, target_host,
 
     # [3] Connections
     print(section_header(3, "CONNECTIONS  SOURCE vs TARGET", use_color))
-    for line in render_connections(source_host, target_host, user, port, use_color):
+    for line in render_connections(source_host, target_host, databases, user, port, use_color):
         print(line)
     print()
 
