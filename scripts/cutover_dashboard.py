@@ -177,7 +177,7 @@ def list_databases(host, port, user):
 
 
 def get_connections_by_db(host, port, user, databases=None):
-    """Returns dict: {datname -> {state -> count}}.
+    """Returns dict: {datname -> {usename -> {state -> count}}}.
 
     If databases is provided, only those databases are included.
     """
@@ -189,31 +189,33 @@ def get_connections_by_db(host, port, user, databases=None):
                 cur.execute("""
                     SELECT
                         datname,
-                        COALESCE(state, 'unknown') AS state,
+                        COALESCE(usename, 'unknown') AS usename,
+                        COALESCE(state,   'unknown') AS state,
                         count(*)::int
                     FROM pg_stat_activity
                     WHERE datname = ANY(%s)
                       AND pid <> pg_backend_pid()
-                    GROUP BY datname, state
-                    ORDER BY datname, count(*) DESC
+                    GROUP BY datname, usename, state
+                    ORDER BY datname, usename, count(*) DESC
                 """, (list(databases),))
             else:
                 cur.execute("""
                     SELECT
                         datname,
-                        COALESCE(state, 'unknown') AS state,
+                        COALESCE(usename, 'unknown') AS usename,
+                        COALESCE(state,   'unknown') AS state,
                         count(*)::int
                     FROM pg_stat_activity
                     WHERE datname NOT IN %s
                       AND pid <> pg_backend_pid()
-                    GROUP BY datname, state
-                    ORDER BY datname, count(*) DESC
+                    GROUP BY datname, usename, state
+                    ORDER BY datname, usename, count(*) DESC
                 """, (tuple(SYSTEM_DBS),))
             rows = cur.fetchall()
         conn.close()
         result = {}
-        for datname, state, count in rows:
-            result.setdefault(datname, {})[state] = count
+        for datname, usename, state, count in rows:
+            result.setdefault(datname, {}).setdefault(usename, {})[state] = count
         return result
     except Exception as e:
         return {"__error__": str(e)[:60]}
@@ -581,76 +583,85 @@ def render_connections(source_host, target_host, databases, user, port, use_colo
         "unknown":                         "unknown",
     }
 
-    CW = {"db": 28, "state": 20, "src": 8, "tgt": 8}
+    CW = {"db": 24, "user": 22, "state": 20, "src": 7, "tgt": 7}
     sep = "+" + "+".join("-" * (w + 2) for w in CW.values()) + "+"
     mid = sep
 
-    def row(db, state, src, tgt, state_color=""):
+    def row(db, usr, state, src, tgt, state_color=""):
         sc = state_color if use_color else ""
         return (
             f"| {rpad(db,    CW['db'])} "
+            f"| {rpad(usr,   CW['user'])} "
             f"| {rpad(sc + state + (C_RESET if sc else ''), CW['state'])} "
             f"| {lpad(src,   CW['src'])} "
             f"| {lpad(tgt,   CW['tgt'])} |"
         )
 
     lines.append(sep)
-    lines.append(row("DATABASE", "STATE", "SOURCE", "TARGET"))
+    lines.append(row("DATABASE", "USERNAME", "STATE", "SOURCE", "TARGET"))
     lines.append(sep)
 
     # Connection error
     if "__error__" in src_data or "__error__" in tgt_data:
         err = src_data.get("__error__") or tgt_data.get("__error__", "")
-        lines.append(row("ERROR", err[:20], "", ""))
+        lines.append(row("ERROR", err[:22], "", "", ""))
         lines.append(sep)
         return lines
 
     all_dbs = sorted(set(list(src_data.keys()) + list(tgt_data.keys())))
 
     if not all_dbs:
-        lines.append(row("(no connections)", "", "0", "0"))
+        lines.append(row("(no connections)", "", "", "0", "0"))
     else:
-        total_src = total_tgt = 0
         for db in all_dbs:
-            src_states = src_data.get(db, {})
-            tgt_states = tgt_data.get(db, {})
-            all_states = sorted(
-                set(list(src_states.keys()) + list(tgt_states.keys())),
-                key=lambda s: (s != "active", s != "idle", s),
-            )
-            first = True
-            for state in all_states:
-                src_n = src_states.get(state, 0)
-                tgt_n = tgt_states.get(state, 0)
-                total_src += src_n
-                total_tgt += tgt_n
+            src_users = src_data.get(db, {})
+            tgt_users = tgt_data.get(db, {})
+            all_users = sorted(set(list(src_users.keys()) + list(tgt_users.keys())))
 
-                label = STATE_SHORT.get(state, state[:20])
-                s_color = ""
-                if use_color:
-                    if state == "active":
-                        s_color = C_GREEN
-                    elif "aborted" in state or state == "__error__":
-                        s_color = C_RED
-                    elif "transaction" in state:
-                        s_color = C_YELLOW
+            first_db = True
+            for usr in all_users:
+                src_states = src_users.get(usr, {})
+                tgt_states = tgt_users.get(usr, {})
+                all_states = sorted(
+                    set(list(src_states.keys()) + list(tgt_states.keys())),
+                    key=lambda s: (s != "active", s != "idle", s),
+                )
+                first_usr = True
+                for state in all_states:
+                    src_n = src_states.get(state, 0)
+                    tgt_n = tgt_states.get(state, 0)
 
-                db_col = db if first else ""
-                lines.append(row(db_col, label, str(src_n), str(tgt_n), s_color))
-                first = False
+                    label = STATE_SHORT.get(state, state[:20])
+                    s_color = ""
+                    if use_color:
+                        if state == "active":
+                            s_color = C_GREEN
+                        elif "aborted" in state or state == "__error__":
+                            s_color = C_RED
+                        elif "transaction" in state:
+                            s_color = C_YELLOW
+
+                    db_col  = db  if first_db  and first_usr else ""
+                    usr_col = usr if first_usr else ""
+                    lines.append(row(db_col, usr_col, label,
+                                     str(src_n), str(tgt_n), s_color))
+                    first_usr = False
+                first_db = False
 
             lines.append(mid)
 
     # Total footer
     total_src = sum(
-        n for db_states in src_data.values() if isinstance(db_states, dict)
-        for n in db_states.values()
+        n for db_users in src_data.values() if isinstance(db_users, dict)
+        for u_states in db_users.values() if isinstance(u_states, dict)
+        for n in u_states.values()
     )
     total_tgt = sum(
-        n for db_states in tgt_data.values() if isinstance(db_states, dict)
-        for n in db_states.values()
+        n for db_users in tgt_data.values() if isinstance(db_users, dict)
+        for u_states in db_users.values() if isinstance(u_states, dict)
+        for n in u_states.values()
     )
-    lines.append(row("TOTAL", "", str(total_src), str(total_tgt)))
+    lines.append(row("TOTAL", "", "", str(total_src), str(total_tgt)))
     lines.append(sep)
     return lines
 
