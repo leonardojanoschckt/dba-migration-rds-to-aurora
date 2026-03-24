@@ -108,8 +108,23 @@ def task_exists(dms, task_id):
 
 def create_aurora_endpoint(dms, ep_id, aurora_host, dbname, user, password, ssl_mode, dry_run):
     exists, arn = endpoint_exists(dms, ep_id)
+
     if exists:
-        print(f"    endpoint {ep_id} : already exists")
+        if dry_run:
+            print(f"    endpoint {ep_id} : [dry-run] would update host/user/password")
+            return arn
+        dms.modify_endpoint(
+            EndpointArn=arn,
+            SslMode=ssl_mode,
+            PostgreSQLSettings={
+                "ServerName":   aurora_host,
+                "Port":         5432,
+                "DatabaseName": dbname,
+                "Username":     user,
+                "Password":     password,
+            },
+        )
+        print(f"    endpoint {ep_id} : updated host/user/password")
         return arn
 
     if dry_run:
