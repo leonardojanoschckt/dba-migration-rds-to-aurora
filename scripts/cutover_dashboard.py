@@ -868,8 +868,8 @@ def main():
     parser.add_argument("--discovery-report",  default=DISCOVERY_REPORT)
     parser.add_argument("--region",            default="us-east-1",
                         help="AWS region for ECS queries (default: us-east-1)")
-    parser.add_argument("--aws-profile",       default=None,
-                        help="AWS profile for ECS queries (default: env default)")
+    parser.add_argument("--aws-profile",       default="prd",
+                        help="AWS profile for ECS queries (default: prd)")
     args = parser.parse_args()
 
     # Load config
