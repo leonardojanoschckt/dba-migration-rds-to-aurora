@@ -42,6 +42,9 @@ DEFAULT_USER   = "svc_claude"
 DEFAULT_PORT   = 5432
 SYSTEM_DATABASES = ("postgres", "template0", "template1", "rdsadmin")
 
+# Extra service accounts to disable regardless of DB ownership
+EXTRA_SERVICE_USERS = {"svc_redash"}
+
 
 def load_config(path):
     with open(path) as f:
@@ -187,6 +190,14 @@ def main():
             summary_rows.append((src_name[:42], "-", "ERROR", str(e)[:40]))
             total_errors += 1
             continue
+
+        # Add extra service accounts if they exist on this host
+        extra = []
+        for extra_user in sorted(EXTRA_SERVICE_USERS):
+            if fetch_login_status(src_host, args.port, args.user, extra_user) is not None:
+                if extra_user not in owners:
+                    extra.append(extra_user)
+        owners = owners + extra
 
         if not owners:
             print(f"  No service accounts found")
