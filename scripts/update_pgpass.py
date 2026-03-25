@@ -223,13 +223,17 @@ def main():
     fresh_pgpass = read_pgpass(args.pgpass)
     primary_host = clusters[0]["endpoint"]
 
-    CW = {"db": 35, "user": 45, "auth": 8}
-    sep    = "+-" + "-+-".join("-" * w for w in [CW["db"], CW["user"], CW["auth"], CW["auth"]]) + "-+"
+    def mask_pwd(p):
+        return p[:2] + "***" + p[-2:] if len(p) > 4 else "***"
+
+    CW = {"db": 30, "user": 30, "pwd": 12, "host": 52, "auth": 6}
+    sep    = "+" + "+".join("-" * (w + 2) for w in CW.values()) + "+"
     header = ("| " + " | ".join([
         f"{'DATABASE':<{CW['db']}}",
         f"{'USERNAME':<{CW['user']}}",
-        f"{'SRC AUTH':^{CW['auth']}}",
-        f"{'TGT AUTH':^{CW['auth']}}",
+        f"{'PASSWORD':^{CW['pwd']}}",
+        f"{'ENDPOINT':<{CW['host']}}",
+        f"{'AUTH':^{CW['auth']}}",
     ]) + " |")
 
     print(sep)
@@ -239,6 +243,7 @@ def main():
     conn_ok = conn_fail = 0
     for dbname, svc_user in sorted(db_entries):
         pwd = get_password(fresh_pgpass, svc_user)
+        masked = mask_pwd(pwd) if pwd else "(none)"
         if not pwd:
             continue
 
@@ -252,8 +257,13 @@ def main():
                 src_status = "OK"
             except Exception:
                 src_status = "FAIL"
-        else:
-            src_status = "N/A"
+            print("| " + " | ".join([
+                f"{dbname:<{CW['db']}}",
+                f"{svc_user:<{CW['user']}}",
+                f"{masked:^{CW['pwd']}}",
+                f"{src_host:<{CW['host']}}",
+                f"{'SRC ' + src_status:^{CW['auth']}}",
+            ]) + " |")
 
         # TARGET check
         try:
@@ -267,13 +277,14 @@ def main():
             conn_fail += 1
 
         print("| " + " | ".join([
-            f"{dbname:<{CW['db']}}",
+            f"{'':>{CW['db']}}",
             f"{svc_user:<{CW['user']}}",
-            f"{src_status:^{CW['auth']}}",
-            f"{tgt_status:^{CW['auth']}}",
+            f"{masked:^{CW['pwd']}}",
+            f"{primary_host:<{CW['host']}}",
+            f"{'TGT ' + tgt_status:^{CW['auth']}}",
         ]) + " |")
+        print(sep)
 
-    print(sep)
     print(f"\n  OK  : {conn_ok}")
     print(f"  FAIL: {conn_fail}")
     if conn_fail > 0:
