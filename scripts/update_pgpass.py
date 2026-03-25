@@ -73,7 +73,8 @@ def pg_connect(host, port, dbname, user):
     )
 
 
-def list_databases(host, port, user):
+def list_source_databases(host, port, user):
+    """Return [(datname, owner)] from a SOURCE RDS instance."""
     conn = pg_connect(host, port, "postgres", user)
     conn.set_session(readonly=True, autocommit=True)
     try:
@@ -86,9 +87,24 @@ def list_databases(host, port, user):
                   AND d.datistemplate = false
                 ORDER BY d.datname
             """, (tuple(SYSTEM_DBS),))
-            return cur.fetchall()  # [(datname, owner), ...]
+            return cur.fetchall()
     finally:
         conn.close()
+
+
+def collect_config_databases(config, port, user):
+    """Return sorted unique [(datname, owner)] across all SOURCE instances in config."""
+    seen = {}
+    for src in config.get("source_rds_endpoints", []):
+        host = src["endpoint"]
+        name = src["name"]
+        try:
+            rows = list_source_databases(host, port, user)
+            for dbname, owner in rows:
+                seen.setdefault(dbname, owner)  # first source wins
+        except Exception as e:
+            print(f"  WARN: could not list databases from {name}: {e}", file=sys.stderr)
+    return sorted(seen.items())
 
 
 def build_entries(config_path, clusters, db_entries, pgpass_lines):
@@ -151,12 +167,11 @@ def main():
         print(f"Mode    : dry-run")
     print()
 
-    # Discover databases and their owners from Aurora
-    print("Discovering databases on TARGET Aurora...")
-    try:
-        db_entries = list_databases(target_host, args.port, CONNECT_USER)
-    except Exception as e:
-        print(f"ERROR connecting to target: {e}", file=sys.stderr)
+    # Discover databases and their owners from SOURCE instances in config
+    print("Discovering databases from SOURCE RDS instances in config...")
+    db_entries = collect_config_databases(config, args.port, CONNECT_USER)
+    if not db_entries:
+        print("ERROR: no databases found across source RDS instances", file=sys.stderr)
         sys.exit(1)
 
     for dbname, owner in db_entries:
