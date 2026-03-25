@@ -45,8 +45,14 @@ def read_pgpass(path):
         return f.readlines()
 
 
-def get_password(pgpass_lines, username):
-    """Find password for a user. Checks specific entries first, then wildcards."""
+def get_password(pgpass_lines, username, host=None):
+    """Find password for username, optionally scoped to a specific host.
+
+    Matching order (libpq-style):
+      1. Exact host match for this username
+      2. Wildcard host (*) for this username
+    When host=None, returns the first entry for the username (exact or wildcard).
+    """
     wildcard_pwd = None
     for line in pgpass_lines:
         stripped = line.strip()
@@ -55,14 +61,15 @@ def get_password(pgpass_lines, username):
         parts = stripped.split(":")
         if len(parts) < 5:
             continue
-        host, port, db, user = parts[0], parts[1], parts[2], parts[3]
+        pg_host, _port, _db, pg_user = parts[0], parts[1], parts[2], parts[3]
         password = ":".join(parts[4:])
-        if user != username:
+        if pg_user != username:
             continue
-        if host == "*" and port == "*" and db == "*":
-            wildcard_pwd = password  # keep looking for more specific
-        else:
-            return password  # specific entry takes priority
+        if pg_host == "*":
+            if wildcard_pwd is None:
+                wildcard_pwd = password  # keep as fallback
+        elif host is None or pg_host == host:
+            return password  # exact host match wins immediately
     return wildcard_pwd
 
 
@@ -93,7 +100,7 @@ def list_source_databases(host, port, user):
 
 
 def collect_config_databases(config, port, user):
-    """Return sorted unique [(datname, owner)] across all SOURCE instances in config."""
+    """Return sorted unique [(datname, owner, src_host)] across all SOURCE instances in config."""
     seen = {}
     for src in config.get("source_rds_endpoints", []):
         host = src["endpoint"]
@@ -101,10 +108,10 @@ def collect_config_databases(config, port, user):
         try:
             rows = list_source_databases(host, port, user)
             for dbname, owner in rows:
-                seen.setdefault(dbname, owner)  # first source wins
+                seen.setdefault(dbname, (owner, host))  # first source wins
         except Exception as e:
             print(f"  WARN: could not list databases from {name}: {e}", file=sys.stderr)
-    return sorted(seen.items())
+    return [(dbname, owner, host) for dbname, (owner, host) in sorted(seen.items())]
 
 
 def build_entries(config_path, clusters, db_entries, pgpass_lines):
@@ -124,10 +131,10 @@ def build_entries(config_path, clusters, db_entries, pgpass_lines):
         clusters_hosts.append(hosts)
 
     entries = []
-    for dbname, svc_user in sorted(db_entries):
-        pwd = get_password(pgpass_lines, svc_user)
+    for dbname, svc_user, src_host in sorted(db_entries):
+        pwd = get_password(pgpass_lines, svc_user, host=src_host)
         if not pwd:
-            warns.append(f"  WARN: no password found for {svc_user} (db={dbname}) — skipped")
+            warns.append(f"  WARN: no password found for {svc_user} (db={dbname}, src={src_host}) — skipped")
             continue
         for hosts in clusters_hosts:
             for host in hosts:
@@ -174,10 +181,10 @@ def main():
         print("ERROR: no databases found across source RDS instances", file=sys.stderr)
         sys.exit(1)
 
-    for dbname, owner in db_entries:
-        pwd = get_password(pgpass_lines, owner)
+    for dbname, owner, src_host in db_entries:
+        pwd = get_password(pgpass_lines, owner, host=src_host)
         status = "password found" if pwd else "NO PASSWORD in pgpass"
-        print(f"  {dbname:<35} owner={owner:<45} {status}")
+        print(f"  {dbname:<35} owner={owner:<30} src={src_host:<55} {status}")
 
     print()
     new_lines, warns = build_entries(
@@ -241,14 +248,13 @@ def main():
     print(sep)
 
     conn_ok = conn_fail = 0
-    for dbname, svc_user in sorted(db_entries):
-        pwd = get_password(fresh_pgpass, svc_user)
+    for dbname, svc_user, src_host in sorted(db_entries):
+        # Use src_host from db_entries (authoritative); peerdb report as fallback
+        src_host = src_host or src_host_by_db.get(dbname, "")
+        pwd = get_password(fresh_pgpass, svc_user, host=src_host)
         masked = mask_pwd(pwd) if pwd else "(none)"
         if not pwd:
             continue
-
-        # SOURCE check
-        src_host = src_host_by_db.get(dbname, "")
         if src_host:
             try:
                 c = psycopg2.connect(host=src_host, port=args.port, dbname=dbname,
