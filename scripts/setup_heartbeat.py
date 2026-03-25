@@ -53,8 +53,8 @@ def get_db_owner(conn, dbname):
     return row[0] if row else None
 
 
-def list_target_databases(host, port, user):
-    """List all non-system databases on Aurora target."""
+def list_source_databases(host, port, user):
+    """List non-system databases on a SOURCE RDS instance."""
     conn = pg_connect(host, port, "postgres", user)
     conn.set_session(readonly=True, autocommit=True)
     try:
@@ -67,6 +67,20 @@ def list_target_databases(host, port, user):
             return [row[0] for row in cur.fetchall()]
     finally:
         conn.close()
+
+
+def collect_config_databases(config, port, user):
+    """Return sorted list of unique databases across all SOURCE instances in config."""
+    databases = set()
+    for src in config.get("source_rds_endpoints", []):
+        host = src["endpoint"]
+        name = src["name"]
+        try:
+            dbs = list_source_databases(host, port, user)
+            databases.update(dbs)
+        except Exception as e:
+            print(f"  WARN: could not list databases from {name}: {e}", file=sys.stderr)
+    return sorted(databases)
 
 
 def setup_heartbeat_table(host, port, user, dbname, dry_run=False):
@@ -196,16 +210,15 @@ def main():
         print(f"Mode   : dry-run")
     print("=" * 70)
 
-    # Get databases from target
-    try:
-        databases = list_target_databases(target_host, args.port, args.user)
-    except Exception as e:
-        print(f"ERROR listing databases on target: {e}", file=sys.stderr)
+    # Get databases from SOURCE instances defined in config
+    databases = collect_config_databases(config, args.port, args.user)
+    if not databases:
+        print("ERROR: no databases found across source RDS instances", file=sys.stderr)
         sys.exit(1)
 
     if args.database:
         if args.database not in databases:
-            print(f"ERROR: database '{args.database}' not found on target", file=sys.stderr)
+            print(f"ERROR: database '{args.database}' not found in any source RDS", file=sys.stderr)
             sys.exit(1)
         databases = [args.database]
 
