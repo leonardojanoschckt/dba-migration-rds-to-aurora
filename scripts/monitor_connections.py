@@ -57,9 +57,10 @@ def fetch_connections(host, port, user, dbname):
                     count(*)::int
                 FROM pg_stat_activity
                 WHERE datname = %s
+                  AND usename != %s
                 GROUP BY usename, state
                 ORDER BY usename, state
-            """, (dbname,))
+            """, (dbname, user))
             rows = cur.fetchall()
         conn.close()
         return {(row[0], row[1]): row[2] for row in rows}
