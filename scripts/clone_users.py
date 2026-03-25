@@ -99,13 +99,16 @@ def read_pgpass(pgpass_path=None):
 def lookup_password(pgpass_entries, host, rolname, port="5432"):
     """Return the first password in .pgpass matching host+port+rolname.
 
-    Wildcard '*' in .pgpass matches any value.
+    Wildcard '*' in .pgpass matches host and port but NOT user — user must
+    match exactly to avoid resolving svc_claude's catch-all entry for other roles.
     """
     def matches(pattern, value):
         return pattern == "*" or pattern == value
 
     for pg_host, pg_port, _pg_db, pg_user, password in pgpass_entries:
-        if matches(pg_host, host) and matches(pg_port, port) and matches(pg_user, rolname):
+        if pg_user != rolname:
+            continue
+        if matches(pg_host, host) and matches(pg_port, port):
             return password
     return None
 
