@@ -20,11 +20,11 @@ Usage:
         --config  config/catalog_services_migration.yaml \\
         --apply
 
-    # Custom TTL (default: keep existing TTL)
+    # Custom TTL (default: 60)
     python scripts/cutover_update_dns.py \\
         --service bo-risk-monitoring-engine-pgsql-prd \\
         --config  config/catalog_services_migration.yaml \\
-        --apply --ttl 60
+        --apply --ttl 300
 """
 
 import argparse
@@ -126,8 +126,8 @@ def main():
                         help="Migration YAML config (default: config/catalog_services_migration.yaml)")
     parser.add_argument("--apply",   action="store_true",
                         help="Apply DNS changes (default: dry-run)")
-    parser.add_argument("--ttl",     type=int, default=None,
-                        help="TTL in seconds (default: keep existing TTL, or 60 for new records)")
+    parser.add_argument("--ttl",     type=int, default=60,
+                        help="TTL in seconds (default: 60)")
     parser.add_argument("--aws-profile", default=DEFAULT_PROFILE)
     parser.add_argument("--region",      default=DEFAULT_REGION)
     args = parser.parse_args()
@@ -190,7 +190,7 @@ def main():
         print(f"    Zone  : {zone['name']}  ({zone['id']})")
 
         current_val, current_ttl = get_current_record(r53, zone["id"], hostname)
-        ttl = args.ttl if args.ttl is not None else (current_ttl or 60)
+        ttl = args.ttl
 
         if current_val is None:
             print(f"    Current: (record not found)")
