@@ -1,0 +1,26 @@
+# Migration Config - RDS PostgreSQL to Aurora PostgreSQL (PRD)
+# Generated from AWS PRD account on 2026-03-19
+# Source: RDS describe-db-instances + Route53 CNAME lookup
+
+aws_region: "us-east-1"
+
+# Target Aurora PostgreSQL clusters
+target_aurora_clusters:
+  - endpoint: "ckt-microservices2-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ckt-microservices2-aurora-pgsql-prd"
+    cnames:
+      - "ckt-microservices2-aurora-pgsql-prd.conekta.com"
+
+# Source RDS PostgreSQL instances (31 instances)
+source_rds_endpoints:
+
+  - endpoint: "ct-audit-tool-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-audit-tool-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-audit-tool-pgsql.conekta.com"
+
+  - endpoint: "ct-kyc-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-kyc-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:

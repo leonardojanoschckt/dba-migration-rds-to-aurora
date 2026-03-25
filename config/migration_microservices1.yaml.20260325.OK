@@ -31,3 +31,9 @@ source_rds_endpoints:
     engine_version: "16.10"
     cnames:
       - "ct-vtex-pgsql.conekta.com"
+
+  - endpoint: "ct-compass-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-compass-pgsql-prd"
+    engine_version: "16.8"
+    cnames:
+      - "ct-compass-pgsql.conekta.com"
