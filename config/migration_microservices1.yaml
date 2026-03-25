@@ -45,6 +45,12 @@ source_rds_endpoints:
     cnames:
       - "bo-batcher-upload-pgsql.conekta.com"
 
+  - endpoint: "bo-batcher-upload-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-batcher-upload-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-batcher-upload-pgsql.conekta.com"
+
   - endpoint: "bo-chargeback-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
     name: "bo-chargeback-pgsql-high-prd"
     engine_version: "16.10"
@@ -57,3 +63,16 @@ source_rds_endpoints:
     cnames:
       - "bo-risk-approvals-engine-pgsql.conekta.com"
 
+  - endpoint: "bo-risk-approvals-notification-worker-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-approvals-notification-worker-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-approvals-notification-worker-pgsql.conekta.com"
+
+  - endpoint: "bo-risk-monitoring-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "bo-risk-monitoring-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "bo-risk-monitoring-engine-pgsql.conekta.com"
+      - "rk-risk-pgsql.conekta.com"
+      - "rk-risk-pgsql-prd.conekta.io"
