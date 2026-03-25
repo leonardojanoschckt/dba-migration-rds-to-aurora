@@ -1,0 +1,76 @@
+# Migration Config - RDS PostgreSQL to Aurora PostgreSQL (PRD)
+# Generated from AWS PRD account on 2026-03-19
+# Source: RDS describe-db-instances + Route53 CNAME lookup
+
+aws_region: "us-east-1"
+
+# Target Aurora PostgreSQL clusters
+target_aurora_clusters:
+  - endpoint: "ckt-microservices2-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ckt-microservices2-aurora-pgsql-prd"
+    cnames:
+      - "ckt-microservices2-aurora-pgsql-prd.conekta.com"
+
+# Source RDS PostgreSQL instances
+source_rds_endpoints:
+
+  - endpoint: "ct-panel-notifications.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-panel-notifications"
+    engine_version: "16.8"
+    cnames:
+      - "ct-panel-notifications.conekta.com"
+
+  - endpoint: "ct-notifications-api-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-notifications-api-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-notifications-api-pgsql.conekta.com"
+
+  - endpoint: "ct-cash-notifications-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-cash-notifications-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-cash-notifications-pgsql.conekta.com"
+
+  - endpoint: "ct-customer-reporting-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-customer-reporting-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-customer-reporting-pgsql.conekta.com"
+
+  - endpoint: "ct-customer-identity-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-customer-identity-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-customer-identity-pgsql.conekta.com"
+
+  - endpoint: "ct-onboarding-catalog-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-onboarding-catalog-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-onboarding-catalog-pgsql.conekta.com"
+
+  - endpoint: "ct-documents-manager-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-documents-manager-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-documents-manager-pgsql.conekta.com"
+
+  - endpoint: "ct-permissions-manager-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-permissions-manager-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-permissions-manager-pgsql.conekta.com"
+
+  - endpoint: "ct-resources-manager-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-resources-manager-pgsql-high-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-resources-manager-pgsql.conekta.com"
+
+  - endpoint: "ct-notifications-api-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-notifications-api-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-notifications-api-pgsql.conekta.com"
+
