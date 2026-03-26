@@ -74,3 +74,14 @@ source_rds_endpoints:
     cnames:
       - "ct-notifications-api-pgsql.conekta.com"
 
+  - endpoint: "ct-audit-tool-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-audit-tool-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-audit-tool-pgsql.conekta.com"
+
+  - endpoint: "ct-kyc-engine-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-kyc-engine-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-kyc-engine-pgsql.conekta.com"

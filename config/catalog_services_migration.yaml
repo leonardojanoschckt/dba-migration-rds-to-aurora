@@ -6,10 +6,10 @@ aws_region: "us-east-1"
 
 # Target Aurora PostgreSQL clusters
 target_aurora_clusters:
-  - endpoint: "ckt-microservices1-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
-    name: "ckt-microservices1-aurora-pgsql-prd"
+  - endpoint: "ckt-microservices2-us-east-1-aurora-pgsql-prd.cluster-cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ckt-microservices2-aurora-pgsql-prd"
     cnames:
-      - "ckt-microservices1-aurora-pgsql-prd.conekta.com"
+      - "ckt-microservices2-aurora-pgsql-prd.conekta.com"
 
 # Source RDS PostgreSQL instances (30 instances)
 source_rds_endpoints:
