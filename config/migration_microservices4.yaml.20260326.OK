@@ -14,8 +14,8 @@ target_aurora_clusters:
 # Source RDS PostgreSQL instances
 source_rds_endpoints:
 
-  - endpoint: "pt-binlist-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
-    name: "pt-binlist-pgsql-high-prd"
+  - endpoint: "pt-cashout-service-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-cashout-service-pgsql-high-prd"
     engine_version: "16.10"
     cnames:
-      - "pt-binlist-pgsql.conekta.com"
+      - "pt-cashout-service-pgsql.conekta.com"
