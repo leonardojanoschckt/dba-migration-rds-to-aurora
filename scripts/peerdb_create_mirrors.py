@@ -16,6 +16,9 @@ Usage:
     # CDC only, skip initial data copy
     python scripts/peerdb_create_mirrors.py --config config/migration.yaml --no-initial-snapshot
 
+    # Keep existing publication/slot on SOURCE (don't drop before creating mirror)
+    python scripts/peerdb_create_mirrors.py --config config/migration.yaml --keep-publication
+
     # Limit to specific schemas (default: all non-system schemas)
     python scripts/peerdb_create_mirrors.py --config config/migration.yaml --include-schemas public,v2,v3
 
@@ -409,6 +412,8 @@ def main():
     parser.add_argument("--output", default=DEFAULT_OUTPUT)
     parser.add_argument("--drop-existing", action="store_true",
                         help="Drop mirror, restore schema on target, then recreate")
+    parser.add_argument("--keep-publication", action="store_true",
+                        help="Do not drop existing publication/slot on SOURCE before creating mirror")
     parser.add_argument("--schemas-dir", default=DEFAULT_SCHEMAS_DIR,
                         help=f"Directory with schema SQL files (default: {DEFAULT_SCHEMAS_DIR})")
     parser.add_argument("--dry-run", action="store_true")
@@ -526,40 +531,43 @@ def main():
                 continue
 
             # Drop slot and publication on SOURCE if they already exist (stale from a previous mirror)
-            try:
-                conn = pg_connect(src_host, args.port, dbname, args.user)
-                conn.set_session(autocommit=True)
-                with conn.cursor() as cur:
-                    # Drop replication slot if present
-                    cur.execute(
-                        "SELECT pg_drop_replication_slot(%s) "
-                        "FROM pg_replication_slots WHERE slot_name = %s",
-                        (slot_name, slot_name),
-                    )
-                    if cur.rowcount:
-                        print(f"    Slot      : {slot_name} dropped (stale)")
+            if args.keep_publication:
+                print(f"    Publication: keeping existing (--keep-publication)")
+            else:
+                try:
+                    conn = pg_connect(src_host, args.port, dbname, args.user)
+                    conn.set_session(autocommit=True)
+                    with conn.cursor() as cur:
+                        # Drop replication slot if present
+                        cur.execute(
+                            "SELECT pg_drop_replication_slot(%s) "
+                            "FROM pg_replication_slots WHERE slot_name = %s",
+                            (slot_name, slot_name),
+                        )
+                        if cur.rowcount:
+                            print(f"    Slot      : {slot_name} dropped (stale)")
 
-                    # Drop publication if present
-                    cur.execute("SELECT 1 FROM pg_publication WHERE pubname = %s", (pub_name,))
-                    if cur.fetchone():
-                        cur.execute(f'DROP PUBLICATION IF EXISTS "{pub_name}"')
-                        print(f"    Publication: {pub_name} dropped (stale)")
-                conn.close()
-            except Exception as e:
-                print(f"    WARN: could not clean up slot/publication: {e}", file=sys.stderr)
+                        # Drop publication if present
+                        cur.execute("SELECT 1 FROM pg_publication WHERE pubname = %s", (pub_name,))
+                        if cur.fetchone():
+                            cur.execute(f'DROP PUBLICATION IF EXISTS "{pub_name}"')
+                            print(f"    Publication: {pub_name} dropped (stale)")
+                    conn.close()
+                except Exception as e:
+                    print(f"    WARN: could not clean up slot/publication: {e}", file=sys.stderr)
 
-            # Create publication on SOURCE
-            try:
-                conn = pg_connect(src_host, args.port, dbname, args.user)
-                conn.set_session(autocommit=True)
-                with conn.cursor() as cur:
-                    cur.execute(f'CREATE PUBLICATION "{pub_name}" FOR ALL TABLES')
-                    print(f"    Publication: {pub_name} created")
-                conn.close()
-            except Exception as e:
-                print(f"    ERROR creating publication: {e}", file=sys.stderr)
-                report["summary"]["failed"] += 1
-                continue
+                # Create publication on SOURCE
+                try:
+                    conn = pg_connect(src_host, args.port, dbname, args.user)
+                    conn.set_session(autocommit=True)
+                    with conn.cursor() as cur:
+                        cur.execute(f'CREATE PUBLICATION "{pub_name}" FOR ALL TABLES')
+                        print(f"    Publication: {pub_name} created")
+                    conn.close()
+                except Exception as e:
+                    print(f"    ERROR creating publication: {e}", file=sys.stderr)
+                    report["summary"]["failed"] += 1
+                    continue
 
             # Discover tables
             try:
