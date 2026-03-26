@@ -531,32 +531,35 @@ def main():
                 continue
 
             # Drop slot and publication on SOURCE if they already exist (stale from a previous mirror)
-            if args.keep_publication:
-                print(f"    Publication: keeping existing (--keep-publication)")
-            else:
-                try:
-                    conn = pg_connect(src_host, args.port, dbname, args.user)
-                    conn.set_session(autocommit=True)
-                    with conn.cursor() as cur:
-                        # Drop replication slot if present
-                        cur.execute(
-                            "SELECT pg_drop_replication_slot(%s) "
-                            "FROM pg_replication_slots WHERE slot_name = %s",
-                            (slot_name, slot_name),
-                        )
-                        if cur.rowcount:
-                            print(f"    Slot      : {slot_name} dropped (stale)")
+            try:
+                conn = pg_connect(src_host, args.port, dbname, args.user)
+                conn.set_session(autocommit=True)
+                with conn.cursor() as cur:
+                    # Always drop replication slot if present — PeerDB cannot create a duplicate
+                    cur.execute(
+                        "SELECT pg_drop_replication_slot(%s) "
+                        "FROM pg_replication_slots WHERE slot_name = %s",
+                        (slot_name, slot_name),
+                    )
+                    if cur.rowcount:
+                        print(f"    Slot      : {slot_name} dropped (stale)")
 
-                        # Drop publication if present
+                    # Drop publication only if --keep-publication is not set
+                    if args.keep_publication:
+                        cur.execute("SELECT 1 FROM pg_publication WHERE pubname = %s", (pub_name,))
+                        exists = cur.fetchone() is not None
+                        print(f"    Publication: {'exists — keeping (--keep-publication)' if exists else 'not found — will create'}")
+                    else:
                         cur.execute("SELECT 1 FROM pg_publication WHERE pubname = %s", (pub_name,))
                         if cur.fetchone():
                             cur.execute(f'DROP PUBLICATION IF EXISTS "{pub_name}"')
                             print(f"    Publication: {pub_name} dropped (stale)")
-                    conn.close()
-                except Exception as e:
-                    print(f"    WARN: could not clean up slot/publication: {e}", file=sys.stderr)
+                conn.close()
+            except Exception as e:
+                print(f"    WARN: could not clean up slot/publication: {e}", file=sys.stderr)
 
-                # Create publication on SOURCE
+            # Create publication on SOURCE (skip if keeping existing)
+            if not args.keep_publication:
                 try:
                     conn = pg_connect(src_host, args.port, dbname, args.user)
                     conn.set_session(autocommit=True)
