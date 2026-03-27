@@ -116,7 +116,12 @@ def list_databases(host, port, user):
 def discover_tables(host, port, user, dbname,
                     include_schemas=("public",),
                     exclude_schemas=("pg_catalog", "information_schema")):
-    """Discover all BASE TABLE and PARTITIONED TABLE in the given schemas."""
+    """Discover all BASE TABLE and PARTITIONED TABLE in the given schemas.
+
+    Excludes child tables (INHERITS) — they appear in pg_inherits as inhrelid.
+    Inherited children must be handled separately; replicating them via PeerDB
+    alongside the parent causes conflicts.
+    """
     conn = pg_connect(host, port, dbname, user)
     conn.set_session(readonly=True, autocommit=True)
     try:
@@ -141,6 +146,7 @@ def discover_tables(host, port, user, dbname,
                     (SELECT count(*) FROM inc) = 0
                     OR i.nspname IS NOT NULL
                   )
+                  AND c.oid NOT IN (SELECT inhrelid FROM pg_inherits)
                 ORDER BY 1
             """, (list(include_schemas), list(exclude_schemas)))
             return [row[0] for row in cur.fetchall()]
@@ -572,10 +578,31 @@ def main():
                     report["summary"]["failed"] += 1
                     continue
 
-            # Discover tables
+            # Discover tables (inherited children excluded automatically)
             try:
                 tables = discover_tables(src_host, args.port, args.user, dbname,
                                          include_schemas, exclude_schemas)
+
+                # Log any inherited child tables that were excluded
+                try:
+                    conn_info = pg_connect(src_host, args.port, dbname, args.user)
+                    conn_info.set_session(readonly=True, autocommit=True)
+                    with conn_info.cursor() as cur:
+                        cur.execute("""
+                            SELECT n.nspname || '.' || c.relname
+                            FROM pg_class c
+                            JOIN pg_namespace n ON n.oid = c.relnamespace
+                            JOIN pg_inherits i ON i.inhrelid = c.oid
+                            WHERE c.relkind IN ('r', 'p')
+                            ORDER BY 1
+                        """)
+                        inherited = [row[0] for row in cur.fetchall()]
+                    conn_info.close()
+                    if inherited:
+                        print(f"    Inherited : {len(inherited)} table(s) excluded — {', '.join(inherited)}")
+                except Exception:
+                    pass
+
                 print(f"    Tables    : {len(tables)}")
                 if not tables:
                     print(f"    WARN: no tables found — skipping", file=sys.stderr)
