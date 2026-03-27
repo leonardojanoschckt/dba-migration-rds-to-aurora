@@ -14,8 +14,15 @@ target_aurora_clusters:
 # Source RDS PostgreSQL instances
 source_rds_endpoints:
 
-  - endpoint: "pt-alternative-payments-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
-    name: "pt-alternative-payments-pgsql-prd"
+  - endpoint: "ct-checkout-api-pgsql-high-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-checkout-api-pgsql-high-prd"
     engine_version: "16.10"
     cnames:
-      - "pt-alternative-payments-pgsql.conekta.com"
+      - "ct-checkout-api-pgsql.conekta.com"
+      - "ct-checkout-service-pgsql.conekta.com"  # second alias for checkout
+
+  - endpoint: "ct-orchestrator-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "ct-orchestrator-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "ct-orchestrator-pgsql.conekta.com"
