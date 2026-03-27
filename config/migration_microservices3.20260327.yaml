@@ -26,3 +26,9 @@ source_rds_endpoints:
     engine_version: "16.10"
     cnames:
       - "ct-orchestrator-pgsql.conekta.com"
+
+  - endpoint: "pt-alternative-payments-pgsql-prd.cz2gavbagff7.us-east-1.rds.amazonaws.com"
+    name: "pt-alternative-payments-pgsql-prd"
+    engine_version: "16.10"
+    cnames:
+      - "pt-alternative-payments-pgsql.conekta.com"
