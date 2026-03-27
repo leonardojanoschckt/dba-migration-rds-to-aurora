@@ -118,9 +118,8 @@ def discover_tables(host, port, user, dbname,
                     exclude_schemas=("pg_catalog", "information_schema")):
     """Discover all BASE TABLE and PARTITIONED TABLE in the given schemas.
 
-    Excludes parent tables that have child tables (INHERITS) — they appear in
-    pg_inherits as inhparent. Parents with inheritance must be handled separately
-    since their rows are split across child tables in WAL.
+    Excludes all tables involved in INHERITS relationships — both parent tables
+    (inhparent) and child tables (inhrelid). These must be handled separately.
     """
     conn = pg_connect(host, port, dbname, user)
     conn.set_session(readonly=True, autocommit=True)
@@ -146,7 +145,11 @@ def discover_tables(host, port, user, dbname,
                     (SELECT count(*) FROM inc) = 0
                     OR i.nspname IS NOT NULL
                   )
-                  AND c.oid NOT IN (SELECT inhparent FROM pg_inherits)
+                  AND c.oid NOT IN (
+                      SELECT inhparent FROM pg_inherits
+                      UNION
+                      SELECT inhrelid  FROM pg_inherits
+                  )
                 ORDER BY 1
             """, (list(include_schemas), list(exclude_schemas)))
             return [row[0] for row in cur.fetchall()]
@@ -592,14 +595,18 @@ def main():
                             SELECT n.nspname || '.' || c.relname
                             FROM pg_class c
                             JOIN pg_namespace n ON n.oid = c.relnamespace
-                            JOIN pg_inherits i ON i.inhparent = c.oid
-                            WHERE c.relkind IN ('r', 'p')
+                            WHERE c.oid IN (
+                                SELECT inhparent FROM pg_inherits
+                                UNION
+                                SELECT inhrelid  FROM pg_inherits
+                            )
+                            AND c.relkind IN ('r', 'p')
                             ORDER BY 1
                         """)
                         inherited = [row[0] for row in cur.fetchall()]
                     conn_info.close()
                     if inherited:
-                        print(f"    Parents w/children: {len(inherited)} excluded — {', '.join(inherited)}")
+                        print(f"    Inherited (excl.) : {len(inherited)} — {', '.join(inherited)}")
                 except Exception:
                     pass
 
