@@ -57,6 +57,14 @@ def list_datasources(session, base_url):
     return resp.json()
 
 
+def get_datasource(session, base_url, ds_id):
+    """Fetch full datasource detail including options (host, port, dbname)."""
+    resp = session.get(f"{base_url}/api/data_sources/{ds_id}", timeout=15)
+    if resp.status_code == 200:
+        return resp.json()
+    return None
+
+
 def extract_host(ds):
     """Extract hostname from data source options (varies by type)."""
     options = ds.get("options") or {}
@@ -126,10 +134,14 @@ def main():
     if args.type:
         datasources = [d for d in datasources if args.type.lower() in d.get("type", "").lower()]
 
-    # Enrich with host info
+    print(f"Fetching details for {len(datasources)} data source(s)...\n")
+
+    # Enrich with full detail (host is only in individual endpoint)
     rows = []
     for ds in sorted(datasources, key=lambda d: d.get("name", "").lower()):
-        host, port, dbname = extract_host(ds)
+        detail = get_datasource(session, base_url, ds["id"])
+        ds_full = detail if detail else ds
+        host, port, dbname = extract_host(ds_full)
         status = classify_host(host)
 
         if args.filter_host and args.filter_host.lower() not in host.lower():
